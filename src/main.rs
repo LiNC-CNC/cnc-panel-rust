@@ -241,6 +241,9 @@ impl PanelComm {
         port.write_all(&first_command)?;
         port.flush()?;
 
+        // Wait for panel to respond
+        std::thread::sleep(Duration::from_micros(4000));
+
         // Read 12 bytes
         let mut response = [0u8; 12];
         let bytes_read = port.read(&mut response)?;
@@ -276,7 +279,11 @@ impl PanelComm {
 
         let final_command = [0xEB, 0x02, 0x81, 0xCE];
 
+        // wait for panel 
+        std::thread::sleep(Duration::from_micros(5000));
+
         port.write_all(&second_command)?;
+        std::thread::sleep(Duration::from_micros(5000));
         port.write_all(&final_command)?;
         port.flush()?;
 
@@ -397,7 +404,7 @@ struct SZGHPanelHal {
     led_mc_alarm: InputPin<bool>,
 
     /// 7-segment display pins
-    sseg_magtool: InputPin<u32>,
+    sseg_magtool: InputPin<i32>,
     sseg_spdtool: InputPin<i32>,
 
     /// Mode switch output pins
@@ -426,6 +433,11 @@ struct SZGHPanelHal {
     feed_override: OutputPin<f64>,
     rapid_override: OutputPin<f64>,
     spindle_override: OutputPin<f64>,
+
+    /// Velocity input pins (LinuxCNC → panel)
+    vel_x: InputPin<f64>,
+    vel_y: InputPin<f64>,
+    vel_z: InputPin<f64>,
 
     /// Status pins
     communication_error: OutputPin<bool>,
@@ -544,7 +556,7 @@ impl Resources for SZGHPanelHal {
         let led_mc_alarm = comp.register_pin::<InputPin<bool>>("led_mc_alarm")?;
 
         // 7-segment display pins
-        let sseg_magtool = comp.register_pin::<InputPin<u32>>("sseg_magtool")?;
+        let sseg_magtool = comp.register_pin::<InputPin<i32>>("sseg_magtool")?;
         let sseg_spdtool = comp.register_pin::<InputPin<i32>>("sseg_spdtool")?;
 
         // Mode switch output pins
@@ -573,6 +585,11 @@ impl Resources for SZGHPanelHal {
         let feed_override = comp.register_pin::<OutputPin<f64>>("feed_override")?;
         let rapid_override = comp.register_pin::<OutputPin<f64>>("rapid_override")?;
         let spindle_override = comp.register_pin::<OutputPin<f64>>("spindle_override")?;
+
+        // Velocity input pins
+        let vel_x = comp.register_pin::<InputPin<f64>>("vel_x")?;
+        let vel_y = comp.register_pin::<InputPin<f64>>("vel_y")?;
+        let vel_z = comp.register_pin::<InputPin<f64>>("vel_z")?;
 
         // Status pins
         let communication_error = comp.register_pin::<OutputPin<bool>>("communication_error")?;
@@ -702,6 +719,9 @@ impl Resources for SZGHPanelHal {
             feed_override,
             rapid_override,
             spindle_override,
+            vel_x,
+            vel_y,
+            vel_z,
             communication_error,
             panel_connected,
         })
@@ -858,7 +878,7 @@ impl SZGHPanelHal {
     }
 
     /// Get LED state from HAL pins
-    fn update_led_state(&self, mode_home_active: bool, mode_proghome_active: bool) -> u64 {
+    fn update_led_state(&self, mode_home_active: bool, mode_proghome_active: bool, mode_auto_active: bool) -> u64 {
         let mut led_state = 0u64;
 
         // Helper macro to check LED pins
@@ -940,6 +960,31 @@ impl SZGHPanelHal {
             led_state |= leds::JOG_ZN;
         }
 
+        // Add velocity-based LEDs only in mode_auto
+        if mode_auto_active {
+            if let Ok(&vel_x) = self.vel_x.value() {
+                if vel_x < 0.0 {
+                    led_state |= leds::JOG_XN;
+                } else if vel_x > 0.0 {
+                    led_state |= leds::JOG_XP;
+                }
+            }
+            if let Ok(&vel_y) = self.vel_y.value() {
+                if vel_y < 0.0 {
+                    led_state |= leds::JOG_YN;
+                } else if vel_y > 0.0 {
+                    led_state |= leds::JOG_YP;
+                }
+            }
+            if let Ok(&vel_z) = self.vel_z.value() {
+                if vel_z < 0.0 {
+                    led_state |= leds::JOG_ZN;
+                } else if vel_z > 0.0 {
+                    led_state |= leds::JOG_ZP;
+                }
+            }
+        }
+
         led_state
     }
 }
@@ -955,7 +1000,7 @@ fn main() -> Result<()> {
     if args.debug {
         env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("debug")).init();
     } else {
-        env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+        env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
     }
 
     info!("SZGH Panel HAL component starting...");
@@ -983,9 +1028,10 @@ fn main() -> Result<()> {
             // Calculate mode state from last button state
             let mode_home_active = current_mode == 6;
             let mode_proghome_active = current_mode == 7;
+            let mode_auto_active = current_mode == 1;
             
             // Update LED state from HAL pins
-            let led_state = resources.update_led_state(mode_home_active, mode_proghome_active);
+            let led_state = resources.update_led_state(mode_home_active, mode_proghome_active, mode_auto_active);
             
             // Get 7-segment display values
             let sseg_magtool = resources.sseg_magtool.value().unwrap_or(&0) & 0xFF;
