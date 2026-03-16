@@ -157,17 +157,21 @@ fn modbus_crc16(data: &[u8]) -> [u8; 2] {
 }
 
 /// Convert LED flags to 10-byte array
+/// Matches Python behavior exactly using u128 to simulate arbitrary precision integers
 fn led_state_to_bytes(leds: u64) -> [u8; 10] {
-    let mut led_state: u64 = u64::MAX;
-    led_state &= !leds;
-    led_state <<= 16;
+    // In Python: led_state = (1 << 64) - 1  # UINT64_MAX
+    // led_state = led_state & ~leds
+    // led_state <<= 16
+    // This creates an 80-bit value where bits 79-16 are the inverted LED state
+    
+    let mut led_state: u128 = u64::MAX as u128;  // 0xFFFF_FFFF_FFFF_FFFF
+    led_state &= !(leds as u128);  // Invert the LED bits
+    led_state <<= 16;  // Shift left by 16, now bits 79-16 contain inverted LED state
 
     let mut output = [0u8; 10];
     for i in 0..10 {
         let shift = (9 - i) * 8;
-        // When shift >= 64, wrapping_shr returns 0, which gives us 0xFF & 0xFF = 0xFF
-        // (the behavior we want for the padded bytes)
-        output[i] = (led_state.wrapping_shr(shift as u32) & 0xFF) as u8;
+        output[i] = ((led_state >> shift) & 0xFF) as u8;
     }
     output
 }
