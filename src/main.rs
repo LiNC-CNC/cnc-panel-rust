@@ -754,6 +754,7 @@ impl SZGHPanelHal {
             let _ = pin.set_value(i == current_mode);
         }
 
+        let mode_auto_active = current_mode == 1;
         let mode_home_active = current_mode == 6;
         let mode_proghome_active = current_mode == 7;
         let home_or_proghome_active = mode_home_active || mode_proghome_active;
@@ -767,7 +768,18 @@ impl SZGHPanelHal {
         // Update button pins (not affected by home mode)
         set_button(&self.program_protect, buttons::PROGRAM_PROTECT);
         set_button(&self.estop, buttons::ESTOP);
-        set_button(&self.cycle_start, buttons::CYCLE_START);
+
+        // cycle start only should work in auto mode.
+        let set_cycle_start_button = |pin: &OutputPin<bool>, mask: u64| {
+            let pressed = if !mode_auto_active {
+                false
+            } else {
+                (!button_state & mask) != 0
+            };
+            let _ = pin.set_value(pressed);
+        };
+        set_cycle_start_button(&self.cycle_start, buttons::CYCLE_START);
+
         set_button(&self.cycle_stop, buttons::CYCLE_STOP);
         set_button(&self.mlk, buttons::MLK);
         set_button(&self.flush, buttons::FLUSH);
