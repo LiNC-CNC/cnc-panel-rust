@@ -318,6 +318,7 @@ struct SZGHPanelHal {
     arm_man: OutputPin<bool>,
     jog_yp: OutputPin<bool>,
     sbk: OutputPin<bool>,
+    step: OutputPin<bool>,
     coolant: OutputPin<bool>,
     mag_ccw: OutputPin<bool>,
     pot_dn: OutputPin<bool>,
@@ -470,6 +471,7 @@ impl Resources for SZGHPanelHal {
         let arm_man = comp.register_pin::<OutputPin<bool>>("arm_man")?;
         let jog_yp = comp.register_pin::<OutputPin<bool>>("jog_yp")?;
         let sbk = comp.register_pin::<OutputPin<bool>>("sbk")?;
+        let step = comp.register_pin::<OutputPin<bool>>("step")?;
         let coolant = comp.register_pin::<OutputPin<bool>>("coolant")?;
         let mag_ccw = comp.register_pin::<OutputPin<bool>>("mag_ccw")?;
         let pot_dn = comp.register_pin::<OutputPin<bool>>("pot_dn")?;
@@ -616,6 +618,7 @@ impl Resources for SZGHPanelHal {
             arm_man,
             jog_yp,
             sbk,
+            step,
             coolant,
             mag_ccw,
             pot_dn,
@@ -774,7 +777,13 @@ impl SZGHPanelHal {
             let pressed = if !mode_auto_active {
                 false
             } else {
-                (!button_state & mask) != 0
+                if self.led_sbk.value().map(|v| *v).unwrap_or(false) {
+                    self.step.set_value(!button_state & mask != 0).unwrap();
+                    false
+                } else {
+                    self.step.set_value(false).unwrap();
+                    (!button_state & mask) != 0
+                }
             };
             let _ = pin.set_value(pressed);
         };
