@@ -189,6 +189,29 @@ fn extract_button_state(response: &[u8]) -> u64 {
     button_state
 }
 
+/// Convert decimal number to BCD-like hex representation.
+///
+/// Treats decimal digits as hex digits:
+/// - 42 decimal -> 0x42 (tens=4, ones=2 -> 4*16 + 2 = 66)
+/// - 99 decimal -> 0x99 (tens=9, ones=9 -> 9*16 + 9 = 153)
+///
+/// Args:
+///     value: Integer 0-99
+///
+/// Returns:
+///     u8 with BCD-like hex encoding (0x00-0x99)
+fn dec_to_bcd_hex(value: i32) -> u8 {
+    // Clamp to valid range
+    let value = value.clamp(0, 99);
+
+    // Extract decimal digits
+    let tens = (value / 10) as u8;
+    let ones = (value % 10) as u8;
+
+    // Combine as if they were hex digits
+    (tens << 4) | ones
+}
+
 // ============================================================================
 // CLI Arguments
 // ============================================================================
@@ -902,6 +925,18 @@ impl SZGHPanelHal {
         let _ = self.spindle_override.set_value(spindle_value);
     }
 
+    /// Update 7-segment display values from HAL pins
+    fn update_7segment_displays(&self) -> (u8, u8) {
+        // Get HAL pin values, mask to 8 bits, and convert to BCD hex
+        let magtool_val = self.sseg_magtool.value().unwrap_or(&0);
+        let spdtool_val = self.sseg_spdtool.value().unwrap_or(&0);
+
+        let sseg_magtool = dec_to_bcd_hex(*magtool_val & 0xFF);
+        let sseg_spdtool = dec_to_bcd_hex(*spdtool_val & 0xFF);
+
+        (sseg_magtool, sseg_spdtool)
+    }
+
     /// Get LED state from HAL pins
     fn update_led_state(&self, mode_home_active: bool, mode_proghome_active: bool, mode_auto_active: bool) -> u64 {
         let mut led_state = 0u64;
@@ -1057,15 +1092,14 @@ fn main() -> Result<()> {
             
             // Update LED state from HAL pins
             let led_state = resources.update_led_state(mode_home_active, mode_proghome_active, mode_auto_active);
-            
-            // Get 7-segment display values
-            let sseg_magtool = resources.sseg_magtool.value().unwrap_or(&0) & 0xFF;
-            let sseg_spdtool = (*resources.sseg_spdtool.value().unwrap_or(&0) as u32) & 0xFF;
+
+            // Get 7-segment display values (with BCD conversion)
+            let (sseg_magtool, sseg_spdtool) = resources.update_7segment_displays();
 
             // Create LED bytes for panel
             let mut led_bytes = led_state_to_bytes(led_state);
-            led_bytes[8] = sseg_magtool as u8;
-            led_bytes[9] = sseg_spdtool as u8;
+            led_bytes[8] = sseg_magtool;
+            led_bytes[9] = sseg_spdtool;
 
             // Communicate with panel
             match panel_comm.communicate(&led_bytes) {
