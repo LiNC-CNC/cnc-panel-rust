@@ -391,6 +391,7 @@ class SZGHPanelHAL:
             "lube",
             "spd_ccw",
             "k3",
+            "step",
         ]
 
         for pin_name in button_pins:
@@ -564,16 +565,40 @@ class SZGHPanelHAL:
             self.h[mode_name] = active
 
         # Home mode logic: when mode_home is active, jog buttons control home outputs
-        self.mode_home_active = (current_mode == 6)
-        self.mode_proghome_active = (current_mode == 7)
+        mode_auto_active = current_mode == 1
+        self.mode_home_active = current_mode == 6
+        self.mode_proghome_active = current_mode == 7
         home_or_proghome_active = self.mode_home_active or self.mode_proghome_active
 
         # Jog buttons that should not output in home or proghome mode
-        jog_pins = {"jog_xn", "jog_yp", "jog_zp", "jog_an", "jog_ap",
-                    "jog_bp", "jog_zn", "jog_yn", "jog_bn", "jog_xp"}
+        jog_pins = {
+            "jog_xn",
+            "jog_yp",
+            "jog_zp",
+            "jog_an",
+            "jog_ap",
+            "jog_bp",
+            "jog_zn",
+            "jog_yn",
+            "jog_bn",
+            "jog_xp",
+            "rapid",
+        }
 
+        # cycle_start only works in auto mode, and outputs step if single block LED is active
         for pin_name, button_mask in button_map.items():
-            if pin_name in jog_pins and home_or_proghome_active:
+            if pin_name == "cycle_start":
+                if not mode_auto_active:
+                    self.h[pin_name] = False
+                else:
+                    # Check if single block LED is active
+                    if self.h["led_sbk"]:
+                        self.h["step"] = bool(~button_state & button_mask)
+                        self.h[pin_name] = False
+                    else:
+                        self.h["step"] = False
+                        self.h[pin_name] = bool(~button_state & button_mask)
+            elif pin_name in jog_pins and home_or_proghome_active:
                 self.h[pin_name] = False
             else:
                 self.h[pin_name] = bool(~button_state & button_mask)
