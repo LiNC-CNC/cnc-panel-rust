@@ -71,7 +71,7 @@ pub mod buttons {
     pub const JOG_BN: u64 = 1 << 56;
     pub const JOG_XP: u64 = 1 << 48;
     pub const OPT: u64 = 1 << 40;
-    pub const LUB: u64 = 1 << 31;
+    pub const LUB: u64 = 1 << 32;
     pub const SPD_CCW: u64 = 1 << 24;
     pub const K3: u64 = 1 << 16;
 }
