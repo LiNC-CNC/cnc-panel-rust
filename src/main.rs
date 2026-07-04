@@ -51,7 +51,7 @@ pub mod buttons {
     pub const MPG_SIM: u64 = 1 << 52;
     pub const PT_LA: u64 = 1 << 44;
     pub const MAG_CW: u64 = 1 << 36;
-    pub const CHUCK: u64 = 1 << 29;
+    pub const CHUCK: u64 = 1 << 28;
     pub const JOG_AN: u64 = 1 << 59;
     pub const JOG_AP: u64 = 1 << 51;
     pub const AIR_BLOW: u64 = 1 << 43;
